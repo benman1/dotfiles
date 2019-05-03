@@ -1,0 +1,19 @@
+[alias]
+    unadd = reset HEAD
+    st = status
+    co = checkout
+    uncommit = reset --soft HEAD^
+    changed = diff-tree -no-commit-id --name-only -r
+    updatesubmodules = pull --recurse-submodules && git submodule update
+[pull]
+    rebase = true
+[push]
+    default = simple
+[http]
+    sslVerify = false
+[core]
+    editor = /usr/bin/vim
+[user]
+        name = Ben Auffarth
+[credential]
+        helper = cache
