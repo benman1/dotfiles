@@ -107,3 +107,5 @@ au FileType xml setlocal foldmethod=syntax
 filetype off
 filetype plugin indent on
 syntax on
+" wrap on for .txt files
+au BufRead,BufNewFile *.txt set wrap linebreak nolist
