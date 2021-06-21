@@ -5,6 +5,7 @@
     uncommit = reset --soft HEAD^
     changed = diff-tree -no-commit-id --name-only -r
     updatesubmodules = pull --recurse-submodules && git submodule update
+    branches = for-each-ref --sort=-committerdate refs/heads/    
 [pull]
     rebase = true
 [push]
@@ -14,6 +15,6 @@
 [core]
     editor = /usr/bin/vim
 [user]
-        name = Ben Auffarth
+    name = Ben Auffarth
 [credential]
-        helper = cache
+    helper = cache
