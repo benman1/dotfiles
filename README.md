@@ -14,3 +14,10 @@ git clone https://github.com/gmarik/Vundle.vim.git ~/.vim/bundle/Vundle.vim
 pip3 install pynvim
 pip install msgpack
 ```
+
+## Matplotlib
+Use can specify a filename in the `MATPLOTLIBRC` shell variable, or load the styles like this:
+```python
+plt.style.use('.matplotlibrc')
+```
+
