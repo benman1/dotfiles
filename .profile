@@ -10,4 +10,4 @@ export PROMPT='%F{blue}%1~%f %# '
 
 export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_github"
 export MATPLOTLIBRC=".matplotlibrc"
-
+export PIP_PREFER_BINARY=1
