@@ -18,3 +18,5 @@
     name = Ben Auffarth
 [credential]
     helper = cache
+[init]
+        defaultBranch = main
