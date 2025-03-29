@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Name this file 'cfile' (clipboard file)
+# Save it to ~/.local/bin (better practice than /usr/bin)
+
+if [ -z "$1" ]; then
+  echo "Error: Please specify a file path"
+  exit 1
+fi
+
+full_path=$(realpath --canonicalize-existing "$1")
+
+# Copy path + content to clipboard with a header
+echo -e "File: $full_path\nContent:\n$(cat "$full_path")" | xclip -selection clipboard
