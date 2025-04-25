@@ -1,5 +1,6 @@
 [alias]
-    unadd = !git reset HEAD $@ 2>/dev/null || git rm --cached $@    st = status
+    unadd = !git reset HEAD $@ 2>/dev/null || git rm --cached $@    
+    st = status -u
     co = checkout
     uncommit = reset --soft HEAD^
     changed = diff-tree -no-commit-id --name-only -r
