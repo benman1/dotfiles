@@ -1,0 +1,94 @@
+#!/bin/bash
+# Name: csrc
+# Copies all files in a directory (default: src) to clipboard with paths and contents
+
+usage() {
+  echo "Usage: csrc [directory]"
+  echo "Copies file paths and contents of all files in the directory to clipboard"
+  exit 1
+}
+
+# Find a suitable clipboard command
+if command -v clip.exe &> /dev/null; then
+  CLIP_CMD="clip.exe"
+elif command -v pbcopy &> /dev/null; then
+  CLIP_CMD="pbcopy"
+elif command -v xclip &> /dev/null; then
+  CLIP_CMD="xclip -selection clipboard"
+else
+  echo "Error: No clipboard command found. Please install clip.exe (WSL), pbcopy (macOS), or xclip (Linux)." >&2
+  exit 1
+fi
+
+# Set target directory
+target_dir="${1:-src}"
+
+# Validate directory
+if [ ! -d "$target_dir" ]; then
+  echo "Error: Directory not found: $target_dir" >&2
+  exit 1
+fi
+
+if [ ! -r "$target_dir" ]; then
+  echo "Error: Directory not readable: $target_dir" >&2
+  exit 1
+fi
+
+# Create temp file
+temp_file=$(mktemp) || { echo "Error: Failed to create temp file." >&2; exit 1; }
+
+process_file() {
+  local file="$1"
+  local full_path=$(realpath --canonicalize-existing "$file" 2>/dev/null)
+  
+  # Validate path
+  [ $? -ne 0 ] && { echo "Error: Can't resolve path: $file" >&2; return; }
+  [ ! -r "$full_path" ] && { echo "Error: File not readable: $full_path" >&2; return; }
+
+  # Get file size
+  local file_size=$(stat -c%s "$full_path" 2>/dev/null)
+  [ $? -ne 0 ] && { echo "Error: Can't get size for: $full_path" >&2; return; }
+
+  # Size warning
+  if [ "$file_size" -gt 1048576 ]; then
+    echo "Warning: Large file ($(numfmt --to=iec-i --suffix=B "$file_size")): $full_path" >&2
+    read -p "Include this file? (y/n): " confirm < /dev/tty
+    [[ "$confirm" != [yY] ]] && return
+  fi
+
+  # Binary check
+  if file "$full_path" | grep -q 'binary'; then
+    echo "Warning: Binary file detected: $full_path" >&2
+    read -p "Include this file? (y/n): " confirm < /dev/tty
+    [[ "$confirm" != [yY] ]] && return
+  fi
+
+  # Append to temp file
+  echo -e "File: $full_path\nContent:" >> "$temp_file"
+  cat "$full_path" >> "$temp_file"
+  echo -e "\n" >> "$temp_file"
+}
+
+# Process files
+find "$target_dir" -type f -print0 | while IFS= read -r -d '' file; do
+  process_file "$file"
+done
+
+# Copy to clipboard
+if [ -s "$temp_file" ]; then
+  # Pipe the content to the clipboard command and check the exit code
+  cat "$temp_file" | $CLIP_CMD
+  if [ $? -eq 0 ]; then
+    echo "Success! All selected files copied to clipboard."
+  else
+    echo "Error: Clipboard copy failed using '$CLIP_CMD'." >&2
+    rm "$temp_file"
+    exit 1
+  fi
+else
+  echo "No files were selected for copying." >&2
+fi
+
+# Cleanup
+rm "$temp_file"
+exit 0
