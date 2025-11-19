@@ -1,6 +1,9 @@
 #!/bin/bash
 # Name: csrc
 # Copies all files in a directory (default: src) to clipboard with paths and contents
+# Compatible with: macOS, Linux, WSL, Git Bash, MSYS2
+
+set -euo pipefail
 
 usage() {
   echo "Usage: csrc [directory]"
@@ -8,87 +11,199 @@ usage() {
   exit 1
 }
 
-# Find a suitable clipboard command
-if command -v clip.exe &> /dev/null; then
-  CLIP_CMD="clip.exe"
-elif command -v pbcopy &> /dev/null; then
-  CLIP_CMD="pbcopy"
-elif command -v xclip &> /dev/null; then
-  CLIP_CMD="xclip -selection clipboard"
-else
-  echo "Error: No clipboard command found. Please install clip.exe (WSL), pbcopy (macOS), or xclip (Linux)." >&2
-  exit 1
-fi
-
-# Set target directory
-target_dir="${1:-src}"
-
-# Validate directory
-if [ ! -d "$target_dir" ]; then
-  echo "Error: Directory not found: $target_dir" >&2
-  exit 1
-fi
-
-if [ ! -r "$target_dir" ]; then
-  echo "Error: Directory not readable: $target_dir" >&2
-  exit 1
-fi
-
-# Create temp file
-temp_file=$(mktemp) || { echo "Error: Failed to create temp file." >&2; exit 1; }
-
-process_file() {
-  local file="$1"
-  local full_path=$(realpath --canonicalize-existing "$file" 2>/dev/null)
+# Detect platform and set commands
+detect_platform() {
+  local os_type=$(uname -s)
   
-  # Validate path
-  [ $? -ne 0 ] && { echo "Error: Can't resolve path: $file" >&2; return; }
-  [ ! -r "$full_path" ] && { echo "Error: File not readable: $full_path" >&2; return; }
-
-  # Get file size
-  local file_size=$(stat -c%s "$full_path" 2>/dev/null)
-  [ $? -ne 0 ] && { echo "Error: Can't get size for: $full_path" >&2; return; }
-
-  # Size warning
-  if [ "$file_size" -gt 1048576 ]; then
-    echo "Warning: Large file ($(numfmt --to=iec-i --suffix=B "$file_size")): $full_path" >&2
-    read -p "Include this file? (y/n): " confirm < /dev/tty
-    [[ "$confirm" != [yY] ]] && return
-  fi
-
-  # Binary check
-  if file "$full_path" | grep -q 'binary'; then
-    echo "Warning: Binary file detected: $full_path" >&2
-    read -p "Include this file? (y/n): " confirm < /dev/tty
-    [[ "$confirm" != [yY] ]] && return
-  fi
-
-  # Append to temp file
-  echo -e "File: $full_path\nContent:" >> "$temp_file"
-  cat "$full_path" >> "$temp_file"
-  echo -e "\n" >> "$temp_file"
+  case "$os_type" in
+    Darwin*)
+      PLATFORM="macos"
+      REALPATH_CMD="realpath"
+      STAT_CMD="stat -f%z"
+      ;;
+    Linux*)
+      if grep -qi microsoft /proc/version 2>/dev/null; then
+        PLATFORM="wsl"
+      else
+        PLATFORM="linux"
+      fi
+      REALPATH_CMD="realpath --canonicalize-existing"
+      STAT_CMD="stat -c%s"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      PLATFORM="windows"
+      REALPATH_CMD="realpath"
+      STAT_CMD="stat -c%s"
+      ;;
+    *)
+      PLATFORM="unknown"
+      REALPATH_CMD="realpath"
+      STAT_CMD="stat -c%s"
+      ;;
+  esac
+  
+  export PLATFORM REALPATH_CMD STAT_CMD
 }
 
-# Process files
-find "$target_dir" -type f -print0 | while IFS= read -r -d '' file; do
-  process_file "$file"
-done
-
-# Copy to clipboard
-if [ -s "$temp_file" ]; then
-  # Pipe the content to the clipboard command and check the exit code
-  cat "$temp_file" | $CLIP_CMD
-  if [ $? -eq 0 ]; then
-    echo "Success! All selected files copied to clipboard."
+# Find appropriate clipboard command
+find_clipboard_cmd() {
+  if command -v clip.exe &> /dev/null; then
+    echo "clip.exe"
+  elif command -v pbcopy &> /dev/null; then
+    echo "pbcopy"
+  elif command -v xclip &> /dev/null; then
+    echo "xclip -selection clipboard"
   else
-    echo "Error: Clipboard copy failed using '$CLIP_CMD'." >&2
-    rm "$temp_file"
+    echo ""
+  fi
+}
+
+# Format bytes for human readability (fallback if numfmt unavailable)
+format_bytes() {
+  local bytes=$1
+  if command -v numfmt &> /dev/null; then
+    numfmt --to=iec-i --suffix=B "$bytes"
+  else
+    awk -v bytes="$bytes" 'BEGIN {
+      if (bytes >= 1073741824) printf "%.1fGiB\n", bytes/1073741824
+      else if (bytes >= 1048576) printf "%.1fMiB\n", bytes/1048576
+      else if (bytes >= 1024) printf "%.1fKiB\n", bytes/1024
+      else printf "%dB\n", bytes
+    }'
+  fi
+}
+
+# Check if file is binary (platform-agnostic)
+is_binary() {
+  local file="$1"
+  
+  if command -v file &> /dev/null; then
+    # Check for common binary indicators across platforms
+    if file "$file" | grep -qE 'executable|Mach-O|ELF|PE32|compiled|archive|compressed|image|audio|video|font|data$'; then
+      return 0
+    fi
+  fi
+  
+  # Fallback: check for non-printable characters in first 512 bytes
+  if head -c 512 "$file" 2>/dev/null | grep -q $'\x00'; then
+    return 0
+  fi
+  
+  return 1
+}
+
+# Process individual file
+process_file() {
+  local file="$1"
+  local full_path
+  local file_size
+  
+  # Get absolute path
+  full_path=$($REALPATH_CMD "$file" 2>/dev/null) || {
+    echo "Error: Cannot resolve path: $file" >&2
+    return 1
+  }
+  
+  # Check readability
+  if [ ! -r "$full_path" ]; then
+    echo "Error: File not readable: $full_path" >&2
+    return 1
+  fi
+  
+  # Get file size
+  file_size=$($STAT_CMD "$full_path" 2>/dev/null) || {
+    echo "Error: Cannot get size for: $full_path" >&2
+    return 1
+  }
+  
+  # Warn on large files (>1MB)
+  if [ "$file_size" -gt 1048576 ]; then
+    local size_formatted=$(format_bytes "$file_size")
+    echo "Warning: Large file ($size_formatted): $full_path" >&2
+    read -p "Include this file? (y/n): " confirm < /dev/tty
+    [[ "$confirm" != [yY] ]] && return 0
+  fi
+  
+  # Check if binary
+  if is_binary "$full_path"; then
+    echo "Warning: Binary file detected: $full_path" >&2
+    read -p "Include this file? (y/n): " confirm < /dev/tty
+    [[ "$confirm" != [yY] ]] && return 0
+  fi
+  
+  # Append to temp file
+  echo -e "File: $full_path\nContent:" >> "$temp_file"
+  cat "$full_path" >> "$temp_file" 2>/dev/null || {
+    echo "Error: Failed to read: $full_path" >&2
+    return 1
+  }
+  echo -e "\n" >> "$temp_file"
+  
+  return 0
+}
+
+# Main execution
+main() {
+  # Detect platform
+  detect_platform
+  
+  # Find clipboard command
+  CLIP_CMD=$(find_clipboard_cmd)
+  if [ -z "$CLIP_CMD" ]; then
+    echo "Error: No clipboard command found." >&2
+    echo "Please install: clip.exe (WSL), pbcopy (macOS), or xclip (Linux)" >&2
     exit 1
   fi
-else
-  echo "No files were selected for copying." >&2
-fi
+  
+  # Set target directory
+  local target_dir="${1:-src}"
+  
+  # Validate directory
+  if [ ! -d "$target_dir" ]; then
+    echo "Error: Directory not found: $target_dir" >&2
+    exit 1
+  fi
+  
+  if [ ! -r "$target_dir" ]; then
+    echo "Error: Directory not readable: $target_dir" >&2
+    exit 1
+  fi
+  
+  # Create temp file
+  temp_file=$(mktemp) || {
+    echo "Error: Failed to create temp file" >&2
+    exit 1
+  }
+  
+  # Ensure cleanup on exit
+  trap "rm -f '$temp_file'" EXIT
+  
+  # Process files (using process substitution to avoid subshell)
+  local file_count=0
+  local error_count=0
+  
+  while IFS= read -r -d '' file; do
+    if process_file "$file"; then
+      ((file_count++))
+    else
+      ((error_count++))
+    fi
+  done < <(find "$target_dir" -type f -print0)
+  
+  # Copy to clipboard
+  if [ -s "$temp_file" ]; then
+    if cat "$temp_file" | $CLIP_CMD; then
+      echo "Success! $file_count file(s) copied to clipboard."
+      [ "$error_count" -gt 0 ] && echo "Warning: $error_count file(s) had errors." >&2
+    else
+      echo "Error: Clipboard copy failed using '$CLIP_CMD'" >&2
+      exit 1
+    fi
+  else
+    echo "No files were selected for copying." >&2
+    exit 1
+  fi
+}
 
-# Cleanup
-rm "$temp_file"
-exit 0
+# Run main function
+main "$@"
