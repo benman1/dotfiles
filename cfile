@@ -1,14 +1,58 @@
 #!/bin/bash
-
+# cfile - copy "File: <abs-path>\nContent:\n<file-contents>" to clipboard
+# Usage: cfile <path>
+#
 # Name this file 'cfile' (clipboard file)
 # Save it to ~/.local/bin (better practice than /usr/bin)
 
-if [ -z "$1" ]; then
-  echo "Error: Please specify a file path"
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  printf "Error: Please specify a file path\n" >&2
   exit 1
 fi
 
-full_path=$(realpath --canonicalize-existing "$1")
+input="$1"
 
-# Copy path + content to clipboard with a header
-echo -e "File: $full_path\nContent:\n$(cat "$full_path")" | xclip -selection clipboard
+if [ ! -e "$input" ]; then
+  printf "Error: File does not exist: %s\n" "$input" >&2
+  exit 2
+fi
+
+# Try to get canonical/absolute path:
+get_realpath() {
+  # Prefer python3, then python, then POSIX fallback
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"
+  elif command -v python >/dev/null 2>&1; then
+    python -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"
+  else
+    # POSIX fallback: cd into dirname and use pwd -P
+    # This handles most normal cases (doesn't resolve every symlink chain)
+    dir=$(dirname -- "$1")
+    base=$(basename -- "$1")
+    (cd -- "$dir" 2>/dev/null && printf "%s/%s\n" "$(pwd -P)" "$base")
+  fi
+}
+
+full_path=$(get_realpath "$input")
+
+# Build the payload safely; use printf to avoid echo -e portability issues
+payload=$(printf 'File: %s\nContent:\n' "$full_path")
+# Append file contents (binary-safe concern: clipboard tools prefer text)
+payload="${payload}$(cat -- "$full_path")"
+
+# Send to clipboard (macOS -> pbcopy, Linux -> xclip/xsel)
+if command -v pbcopy >/dev/null 2>&1; then
+  printf '%s' "$payload" | pbcopy
+elif command -v xclip >/dev/null 2>&1; then
+  printf '%s' "$payload" | xclip -selection clipboard
+elif command -v xsel >/dev/null 2>&1; then
+  printf '%s' "$payload" | xsel --clipboard --input
+else
+  printf 'Error: no clipboard utility found. Install pbcopy (macOS default) or xclip/xsel on Linux.\n' >&2
+  exit 3
+fi
+
+# Success
+printf 'Copied: %s\n' "$full_path"
