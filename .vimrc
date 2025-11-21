@@ -6,6 +6,8 @@
 " " Be iMproved
 set nocompatible      
 " " Enhance command-line completion
+set pastetoggle=<F2>
+" paste toggle with f2
 " set wildmenu
 " " Use the OS clipboard by default (on versions compiled with `+clipboard`)
 " set clipboard=unnamedplus
@@ -52,7 +54,7 @@ set laststatus=2
 " " Show the filename in the window titlebar
 " set title
 " " Show the (partial) command as it’s being typed
-" set showcmd
+set showcmd
 " " Start scrolling three lines before the horizontal window border
 " set scrolloff=3
 " " Backspace on MacOS is annoying -> Fix!
@@ -70,7 +72,7 @@ set statusline=%f\ [%l,%c]\ %p%%
 " set nobackup
 " set nowritebackup
 " set noswapfile
-" set tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
+set tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
 filetype plugin indent on    " required
 " " Enable syntax highlighting
 syntax on
