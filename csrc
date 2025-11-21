@@ -1,4 +1,3 @@
-#!/bin/bash
 # Name: csrc
 # Copies all files in a directory (default: src) to clipboard with paths and contents
 # Compatible with: macOS, Linux, WSL, Git Bash, MSYS2
@@ -73,22 +72,80 @@ format_bytes() {
   fi
 }
 
-# Check if file is binary (platform-agnostic)
+# Check if file is binary (improved, platform-agnostic)
+# Check if file is binary (robust, platform-agnostic)
 is_binary() {
   local file="$1"
-  
+
+  # Empty file -> treat as text (fixes inode/x-empty; charset=binary)
+  if [ ! -s "$file" ]; then
+    return 1
+  fi
+
+  # If file(1) exists, use its MIME output first (more reliable)
   if command -v file &> /dev/null; then
-    # Check for common binary indicators across platforms
-    if file "$file" | grep -qE 'executable|Mach-O|ELF|PE32|compiled|archive|compressed|image|audio|video|font|data$'; then
-      return 0
+    local mime
+    mime=$(file --mime -b "$file" 2>/dev/null) || mime=""
+
+    if [ -n "$mime" ]; then
+      # If file explicitly says charset=binary -> binary
+      if echo "$mime" | grep -qiE 'charset=binary|charset=unknown-8bit'; then
+        return 0
+      fi
+
+      # text/* is text
+      if echo "$mime" | grep -qiE '^text/'; then
+        return 1
+      fi
+
+      # application/* that are textual-ish
+      if echo "$mime" | grep -qiE '^application/'; then
+        if echo "$mime" | grep -qiE 'json|xml|javascript|ecmascript|x-www-form-urlencoded|sql|yaml|toml'; then
+          return 1
+        fi
+        # otherwise leave to further checks (some application/* may be binary)
+      fi
+
+      # obvious binary types
+      if echo "$mime" | grep -qiE '^(image/|audio/|video/)|font|pdf|zip|gzip|x-zip|octet-stream'; then
+        return 0
+      fi
+      # else fall through to additional heuristics
     fi
   fi
-  
-  # Fallback: check for non-printable characters in first 512 bytes
+
+  # Quick null byte check (cheap and definitive)
   if head -c 512 "$file" 2>/dev/null | grep -q $'\x00'; then
     return 0
   fi
-  
+
+  # If the file is valid UTF-8, treat as text (handles Python/source files)
+  if command -v iconv &> /dev/null; then
+    if iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+      return 1
+    fi
+  fi
+
+  # Heuristic: printable ASCII ratio in first chunk (4096 bytes)
+  local chunk_bytes printable total ratio
+  chunk_bytes=$(head -c 4096 "$file" 2>/dev/null) || chunk_bytes=""
+  if [ -z "$chunk_bytes" ]; then
+    return 1
+  fi
+
+  total=$(printf '%s' "$chunk_bytes" | wc -c)
+  printable=$(printf '%s' "$chunk_bytes" | tr -cd '\11\12\15\40-\176' | wc -c)
+  if [ "$total" -eq 0 ]; then
+    return 1
+  fi
+
+  ratio=$(( (printable * 100) / total ))
+
+  # If less than 90% printable ASCII, treat as binary (90% is conservative)
+  if [ "$ratio" -lt 90 ]; then
+    return 0
+  fi
+
   return 1
 }
 
