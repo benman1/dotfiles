@@ -5,8 +5,9 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: csrc [directory]"
-  echo "Copies file paths and contents of all files in the directory to clipboard"
+  echo "Usage: csrc [-r] [directory]"
+  echo "  -r    Recurse into subdirectories"
+  echo "Copies file paths and contents of files in the directory to clipboard"
   exit 1
 }
 
@@ -204,6 +205,16 @@ main() {
   # Detect platform
   detect_platform
   
+  local recursive=0
+
+  while getopts ":r" opt; do
+    case "$opt" in
+      r) recursive=1 ;;
+      *) usage ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
   # Find clipboard command
   CLIP_CMD=$(find_clipboard_cmd)
   if [ -z "$CLIP_CMD" ]; then
@@ -214,6 +225,7 @@ main() {
   
   # Set target directory
   local target_dir="${1:-src}"
+
   
   # Validate directory
   if [ ! -d "$target_dir" ]; then
@@ -239,14 +251,20 @@ main() {
   local file_count=0
   local error_count=0
   
+  if [ "$recursive" -eq 1 ]; then
+    find_cmd=(find "$target_dir" -type f -print0)
+  else
+    find_cmd=(find "$target_dir" -maxdepth 1 -type f -print0)
+  fi
+
   while IFS= read -r -d '' file; do
     if process_file "$file"; then
       ((file_count++))
     else
       ((error_count++))
     fi
-  done < <(find "$target_dir" -type f -print0)
-  
+  done < <("${find_cmd[@]}")
+
   # Copy to clipboard
   if [ -s "$temp_file" ]; then
     if cat "$temp_file" | $CLIP_CMD; then
