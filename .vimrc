@@ -28,7 +28,7 @@ set cursorline
 " " Enable line numbers (absolute). For hybrid, also enable 'relativenumber'.
 set number
 " Keep these enabled by default, but disable for large files
-autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 1000000 | set nonumber nocursorline | endif
+autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 500000 | set nonumber nocursorline | endif
 " " Show “invisible” characters
 " set lcs=tab:▸\ ,trail:·,eol:¬,nbsp:_
 " set list
@@ -83,36 +83,11 @@ filetype plugin indent on    " required
 " " Enable syntax highlighting
 syntax on
 " Disable syntax for large files
-autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 1000000 | syntax off | endif
+autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 500000 | syntax off | endif
 " " enable all Python syntax highlighting features
 let python_highlight_all = 1
 " au FileType gitcommit set tw=72
 au BufRead,BufNewFile *.txt set wrap linebreak nolist
-" ---------- TypeScript / HTML syntax helpers ----------
-" Ensure .ts/.tsx get a TypeScript filetype (if not already detected)
-augroup user_typescript
-  autocmd!
-  autocmd BufRead,BufNewFile *.ts,*.tsx,*.js setlocal filetype=typescript
-  autocmd FileType typescript,typescriptreact,typescript.tsx setlocal syntax=typescript
-augroup END
-" Use yats.vim for advanced TypeScript support
-" Make sure HTML uses the html syntax (usually automatic)
-augroup user_html
-  autocmd!
-  autocmd FileType html,htmldjango setlocal syntax=html
-augroup END
-" Install a plugin like vim-polyglot for better HTML/CSS/JS highlighting
-" Python syntax (usually automatic, but explicit ensures highlighting)
-augroup user_python
-  autocmd!
-  autocmd FileType python setlocal syntax=python
-augroup END
-augroup user_c_cpp
-  autocmd!
-  autocmd BufRead,BufNewFile *.c,*.cpp,*.h,*.hpp setlocal filetype=cpp
-  autocmd FileType c,cpp setlocal syntax=cpp
-augroup END
-" Install vim-cpp-enhanced-highlight for better C++ syntax
 " https://github.com/junegunn/vim-plug
 call plug#begin('~/.vim/plugged')
 " Sensible defaults (recommended)
@@ -128,3 +103,40 @@ Plug 'vim-airline/vim-airline-themes'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
 call plug#end()
+" run :PlugInstall to install plugins
+"
+" Enable coc.nvim features
+" Install language servers like this for example:
+" :CocInstall coc-tsserver
+" Use Tab for autocomplete
+inoremap <silent><expr> <TAB>
+      \ coc#pum#visible() ? coc#pum#confirm() :
+      \ CheckBackspace() ? "\<Tab>" :
+      \ coc#refresh()
+
+" Check for backspace to allow Tab to work as normal
+function! CheckBackspace() abort
+  let col = col('.') - 1
+  return !col || getline('.')[col - 1]  =~# '\s'
+endfunction
+
+" GoTo code navigation
+nmap <silent> gd <Plug>(coc-definition)
+nmap <silent> gy <Plug>(coc-type-definition)
+nmap <silent> gi <Plug>(coc-implementation)
+nmap <silent> gr <Plug>(coc-references)
+
+" Show documentation in preview window
+nnoremap <silent> K :call <SID>show_documentation()<CR>
+
+function! s:show_documentation()
+  if CocAction('hasProvider', 'hover')
+    call CocActionAsync('doHover')
+  endif
+endfunction
+
+" Highlight the symbol under the cursor
+autocmd CursorHold * silent call CocActionAsync('highlight')
+
+" Use <c-space> to trigger completion
+inoremap <silent><expr> <c-space> coc#refresh()
