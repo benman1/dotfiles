@@ -1,3 +1,4 @@
+" Automatic reloading of .vimrc
 " autocmd! bufwritepost .vimrc source %
 " " Automatic relaoding of unchanged buffers
 " set autoread
@@ -10,7 +11,7 @@ set pastetoggle=<F2>
 " paste toggle with f2
 " set wildmenu
 " " Use the OS clipboard by default (on versions compiled with `+clipboard`)
-" set clipboard=unnamedplus
+set clipboard=unnamedplus
 " " Allow cursor keys in insert mode
 " set esckeys
 " " Optimize for fast terminal connections
@@ -26,17 +27,21 @@ set encoding=utf-8 nobomb
 set cursorline
 " " Enable line numbers (absolute). For hybrid, also enable 'relativenumber'.
 set number
+" Keep these enabled by default, but disable for large files
+autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 1000000 | set nonumber nocursorline | endif
 " " Show “invisible” characters
 " set lcs=tab:▸\ ,trail:·,eol:¬,nbsp:_
 " set list
-" " Highlight searches
-" set hlsearch
 " " Ignore case of searches
 set ignorecase
 " Treat search with an uppercase letter as a case-sensitive request:
 set smartcase
 " " Highlight dynamically as pattern is typed
 set incsearch
+" " Highlight searches
+set hlsearch
+" Clear search highlights with Escape
+nnoremap <silent> <Esc> :noh<CR><Esc>
 " " Always show status line
 set laststatus=2
 " " Enable mouse in all modes
@@ -58,24 +63,27 @@ set showcmd
 " " Start scrolling three lines before the horizontal window border
 " set scrolloff=3
 " " Backspace on MacOS is annoying -> Fix!
-" set backspace=indent,eol,start
+set backspace=indent,eol,start
 "
 " set nowrap  " don't automatically wrap on load
 "
 " " Useful settings
-set history=700
-set undolevels=700
+set history=100
+set undolevels=100
 set statusline=%f\ [%l,%c]\ %p%%
 " let
 " g:clang_library_path='/usr/local/Cellar/cling/0.5_2/libexec/lib/libclang.dylib'
 " let b:ale_linters = ['eslint']
-" set nobackup
-" set nowritebackup
-" set noswapfile
+" no backups to save I/O and disk space
+set nobackup
+set nowritebackup
+set noswapfile
 set tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
 filetype plugin indent on    " required
 " " Enable syntax highlighting
 syntax on
+" Disable syntax for large files
+autocmd BufRead,BufNewFile * if getfsize(expand("%:p")) > 1000000 | syntax off | endif
 " " enable all Python syntax highlighting features
 let python_highlight_all = 1
 " au FileType gitcommit set tw=72
@@ -84,19 +92,39 @@ au BufRead,BufNewFile *.txt set wrap linebreak nolist
 " Ensure .ts/.tsx get a TypeScript filetype (if not already detected)
 augroup user_typescript
   autocmd!
-  autocmd BufRead,BufNewFile *.ts,*.tsx setlocal filetype=typescript
-  " For react/tsx files some setups use 'typescriptreact' or 'typescript.tsx'
+  autocmd BufRead,BufNewFile *.ts,*.tsx,*.js setlocal filetype=typescript
   autocmd FileType typescript,typescriptreact,typescript.tsx setlocal syntax=typescript
 augroup END
-
+" Use yats.vim for advanced TypeScript support
 " Make sure HTML uses the html syntax (usually automatic)
 augroup user_html
   autocmd!
   autocmd FileType html,htmldjango setlocal syntax=html
 augroup END
-
+" Install a plugin like vim-polyglot for better HTML/CSS/JS highlighting
 " Python syntax (usually automatic, but explicit ensures highlighting)
 augroup user_python
   autocmd!
   autocmd FileType python setlocal syntax=python
 augroup END
+augroup user_c_cpp
+  autocmd!
+  autocmd BufRead,BufNewFile *.c,*.cpp,*.h,*.hpp setlocal filetype=cpp
+  autocmd FileType c,cpp setlocal syntax=cpp
+augroup END
+" Install vim-cpp-enhanced-highlight for better C++ syntax
+" https://github.com/junegunn/vim-plug
+call plug#begin('~/.vim/plugged')
+" Sensible defaults (recommended)
+Plug 'tpope/vim-sensible'
+" Better syntax highlighting for many languages
+Plug 'sheerun/vim-polyglot'
+" Language Server Protocol (LSP) support
+Plug 'neoclide/coc.nvim', {'branch': 'release'}
+" Optional: Statusline (shows LSP status, errors, etc.)
+Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
+" Optional: Fuzzy file finder (like Ctrl-P)
+Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
+Plug 'junegunn/fzf.vim'
+call plug#end()
