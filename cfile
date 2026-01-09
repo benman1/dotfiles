@@ -1,23 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # cfile - copy "File: <abs-path>\nContent:\n<file-contents>" to clipboard
-# Usage: cfile <path>
-#
-# Name this file 'cfile' (clipboard file)
-# Save it to ~/.local/bin (better practice than /usr/bin)
-
+# Usage: cfile <path>...
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  printf "Error: Please specify a file path\n" >&2
+  printf "Error: Please specify at least one file path\n" >&2
   exit 1
 fi
 
-input="$1"
-
-if [ ! -e "$input" ]; then
-  printf "Error: File does not exist: %s\n" "$input" >&2
-  exit 2
-fi
+# Validate all files exist before processing
+for input in "$@"; do
+  if [ ! -e "$input" ]; then
+    printf "Error: File does not exist: %s\n" "$input" >&2
+    exit 2
+  fi
+done
 
 # Try to get canonical/absolute path:
 get_realpath() {
@@ -35,12 +32,14 @@ get_realpath() {
   fi
 }
 
-full_path=$(get_realpath "$input")
-
-# Build the payload safely; use printf to avoid echo -e portability issues
-payload=$(printf 'File: %s\nContent:\n' "$full_path")
-# Append file contents (binary-safe concern: clipboard tools prefer text)
-payload="${payload}$(cat -- "$full_path")"
+# Build combined payload for all files
+payload=""
+for input in "$@"; do
+  full_path=$(get_realpath "$input")
+  [ -n "$payload" ] && payload="${payload}"$'\n\n'
+  payload="${payload}$(printf 'File: %s\nContent:\n' "$full_path")"
+  payload="${payload}$(cat -- "$full_path")"
+done
 
 # Send to clipboard (macOS -> pbcopy, Linux -> xclip/xsel)
 if command -v pbcopy >/dev/null 2>&1; then
@@ -54,5 +53,7 @@ else
   exit 3
 fi
 
-# Success
-printf 'Copied: %s\n' "$full_path"
+# Success: list all copied files
+for input in "$@"; do
+  printf 'Copied: %s\n' "$(get_realpath "$input")"
+done
